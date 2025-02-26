@@ -101,7 +101,7 @@
             <button id="getLocation">📍 Get Live Location</button>
             <button id="sendAlert">🚨 Send SOS Alert</button>
         </div>
-        <p id="location"></p>
+        <p id="location">📍 Location: Waiting for update...</p>
     </div>
 
     <div class="contacts-section">
@@ -127,65 +127,43 @@
         let marker = L.marker([0, 0]).addTo(map);
         
         document.getElementById("getLocation").addEventListener("click", function() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(position => {
-                    let latitude = position.coords.latitude;
-                    let longitude = position.coords.longitude;
-                    document.getElementById("location").innerText = `📍 Latitude: ${latitude}, Longitude: ${longitude}`;
-                    map.setView([latitude, longitude], 15);
-                    marker.setLatLng([latitude, longitude]);
-                }, () => {
-                    document.getElementById("location").innerText = "⚠️ Location access denied.";
+            navigator.geolocation.getCurrentPosition(position => {
+                let latitude = position.coords.latitude;
+                let longitude = position.coords.longitude;
+                document.getElementById("location").innerText = `📍 Latitude: ${latitude}, Longitude: ${longitude}`;
+                map.setView([latitude, longitude], 15);
+                marker.setLatLng([latitude, longitude]);
+                fetch('/send_location', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ latitude, longitude })
                 });
-            } else {
-                alert("Geolocation is not supported by this browser.");
-            }
+            });
         });
 
         document.getElementById("sendAlert").addEventListener("click", function() {
-            fetch("/send_alert", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({})
-            })
-            .then(response => response.json())
-            .then(data => alert(data.message))
-            .catch(error => alert("⚠️ Error sending alert."));
+            fetch('/send_alert', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => alert(data.message));
         });
 
-        function loadContacts() {
-            fetch("/get_contacts")
-                .then(response => response.json())
-                .then(data => {
-                    let contactList = document.getElementById("contactList");
-                    contactList.innerHTML = "";
-                    data.contacts.forEach(contact => {
-                        let li = document.createElement("li");
-                        li.textContent = contact;
-                        contactList.appendChild(li);
-                    });
-                })
-                .catch(error => console.log("Error fetching contacts."));
-        }
-
         document.getElementById("addContact").addEventListener("click", function() {
-            let newContact = document.getElementById("newContact").value;
-            if (newContact) {
-                fetch("/add_contact", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ phone_number: newContact })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                    loadContacts();
-                    document.getElementById("newContact").value = "";
-                });
+            let newNumber = document.getElementById("newContact").value;
+            if (newNumber) {
+                fetch('/add_contact', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone_number: newNumber })
+                }).then(() => location.reload());
             }
         });
 
-        window.onload = loadContacts;
+        fetch('/get_contacts')
+            .then(response => response.json())
+            .then(data => {
+                let contactList = document.getElementById("contactList");
+                contactList.innerHTML = data.contacts.map(num => `<li>${num}</li>`).join('');
+            });
     </script>
 </body>
 </html>
