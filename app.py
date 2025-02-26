@@ -4,7 +4,7 @@ import os
 from twilio.rest import Client  
 
 app = Flask(__name__)
-app.secret_key = "your_secret_key"  # Required for session management
+app.secret_key = os.urandom(24)  # Improved security with dynamic secret key
 
 # Twilio credentials (Replace with actual values)
 TWILIO_ACCOUNT_SID = "AC446c82c2f78412c299537e432b47e65a"
@@ -16,12 +16,31 @@ USER_PROFILE = {"name": "John Doe", "email": "johndoe@example.com", "phone": "+1
 ALERTS_FILE = "alerts.json"
 CONTACTS_FILE = "contacts.json"
 
-# Load contacts from file or initialize an empty list
-if os.path.exists(CONTACTS_FILE):
-    with open(CONTACTS_FILE, "r") as file:
-        EMERGENCY_CONTACTS = json.load(file)
-else:
-    EMERGENCY_CONTACTS = []
+# Load contacts safely
+def load_contacts():
+    """Loads emergency contacts from a JSON file."""
+    if os.path.exists(CONTACTS_FILE):
+        try:
+            with open(CONTACTS_FILE, "r") as file:
+                contacts = json.load(file)
+                if isinstance(contacts, list):
+                    return contacts
+        except json.JSONDecodeError:
+            print("Error: Invalid JSON format in contacts file.")
+    return []
+
+# Load alerts safely
+def load_alerts():
+    """Loads alert history from a JSON file."""
+    if os.path.exists(ALERTS_FILE):
+        try:
+            with open(ALERTS_FILE, "r") as file:
+                alerts = json.load(file)
+                if isinstance(alerts, list):
+                    return alerts
+        except json.JSONDecodeError:
+            print("Error: Invalid JSON format in alerts file.")
+    return []
 
 @app.route('/')
 def index():
@@ -53,14 +72,13 @@ def update_profile():
 
 @app.route('/send_location', methods=['POST'])
 def receive_location():
-    """Receives exact GPS location from the frontend."""
+    """Receives exact GPS location from the frontend and stores in session."""
     data = request.get_json()
     latitude = data.get("latitude")
     longitude = data.get("longitude")
 
     if latitude and longitude:
-        session["latitude"] = latitude
-        session["longitude"] = longitude
+        session["location"] = {"latitude": latitude, "longitude": longitude}
         return jsonify({"message": "Location received!", "latitude": latitude, "longitude": longitude})
 
     return jsonify({"message": "Invalid location data"}), 400
@@ -68,44 +86,40 @@ def receive_location():
 @app.route('/send_alert', methods=['POST'])
 def send_alert():
     """Sends an SOS alert via Twilio SMS to updated contacts."""
-    latitude = session.get("latitude")
-    longitude = session.get("longitude")
+    location = session.get("location")
 
-    if not latitude or not longitude:
+    if not location:
         return jsonify({"message": "Location not available. Please enable GPS and try again."}), 400
 
+    latitude, longitude = location["latitude"], location["longitude"]
     message_body = f"🚨 SOS Alert! Location: {latitude}, {longitude}"
-    
+
     try:
+        # Validate Twilio credentials
         if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
             return jsonify({"message": "Twilio credentials missing"}), 500
 
-        # Load the latest contacts from the file
-        if os.path.exists(CONTACTS_FILE):
-            with open(CONTACTS_FILE, "r") as file:
-                updated_contacts = json.load(file)
-        else:
-            updated_contacts = EMERGENCY_CONTACTS
+        # Load fresh contacts dynamically
+        emergency_contacts = load_contacts()
+        if not emergency_contacts:
+            return jsonify({"message": "No emergency contacts available."}), 400
 
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-        for number in updated_contacts:
-            message = client.messages.create(
-                body=message_body,
-                from_=TWILIO_PHONE_NUMBER,
-                to=number
-            )
-            print(f"Message sent to {number} - SID: {message.sid}")  # Log success
+        for number in emergency_contacts:
+            try:
+                message = client.messages.create(
+                    body=message_body,
+                    from_=TWILIO_PHONE_NUMBER,
+                    to=number
+                )
+                print(f"✅ Message sent to {number} - SID: {message.sid}")  # Debug log
+            except Exception as sms_error:
+                print(f"❌ Error sending SMS to {number}: {sms_error}")  # Debug log
 
         # Save the alert
         alert_data = {"latitude": latitude, "longitude": longitude, "time": "Just Now"}
-
-        if os.path.exists(ALERTS_FILE):
-            with open(ALERTS_FILE, "r") as file:
-                alerts = json.load(file)
-        else:
-            alerts = []
-
+        alerts = load_alerts()
         alerts.append(alert_data)
 
         with open(ALERTS_FILE, "w") as file:
@@ -114,18 +128,13 @@ def send_alert():
         return jsonify({"message": "SOS alert sent!", "location": {"latitude": latitude, "longitude": longitude}}), 200
 
     except Exception as e:
-        print(f"Twilio Error: {e}")  # Debug log
+        print(f"🚨 Twilio Error: {e}")  # Debug log
         return jsonify({"message": "SMS sending failed", "error": str(e)}), 500
 
 @app.route('/get_alerts', methods=['GET'])
 def get_alerts():
     """Fetches all previous alerts."""
-    if os.path.exists(ALERTS_FILE):
-        with open(ALERTS_FILE, "r") as file:
-            alerts = json.load(file)
-    else:
-        alerts = []
-    return jsonify({"alerts": alerts})
+    return jsonify({"alerts": load_alerts()})
 
 @app.route('/add_contact', methods=['POST'])
 def add_contact():
@@ -133,21 +142,23 @@ def add_contact():
     data = request.get_json()
     new_number = data.get("phone_number")
 
-    if new_number and new_number not in EMERGENCY_CONTACTS:
-        EMERGENCY_CONTACTS.append(new_number)
+    if new_number and isinstance(new_number, str) and new_number not in load_contacts():
+        contacts = load_contacts()
+        contacts.append(new_number)
 
         with open(CONTACTS_FILE, "w") as file:
-            json.dump(EMERGENCY_CONTACTS, file)
+            json.dump(contacts, file)
 
-        return jsonify({"message": "Contact added successfully!", "contacts": EMERGENCY_CONTACTS})
+        return jsonify({"message": "Contact added successfully!", "contacts": contacts})
 
     return jsonify({"message": "Invalid or duplicate contact"}), 400
 
 @app.route('/get_contacts', methods=['GET'])
 def get_contacts():
     """Fetches the list of emergency contacts."""
-    return jsonify({"contacts": EMERGENCY_CONTACTS})
+    return jsonify({"contacts": load_contacts()})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=True)
+
