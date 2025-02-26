@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            text-align: center;
+        }
+        .header {
+            background-color: #6a0dad;
+            color: white;
+            padding: 15px;
+            font-size: 24px;
+        }
+        .container {
+            margin: 20px auto;
+            width: 80%;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .profile-pic {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #6a0dad;
+            margin-bottom: 15px;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #6a0dad;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        button:hover {
+            background-color: #5a0cb5;
+        }
+        .nav {
+            display: flex;
+            justify-content: space-around;
+            background: #6a0dad;
+            padding: 10px;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+        }
+        .nav button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">User Profile</div>
+    <div class="container">
+        <img src="default-avatar.png" alt="Profile Picture" id="profilePic" class="profile-pic">
+        
+        <input type="file" id="profilePicInput" accept="image/*" onchange="uploadProfilePic()">
+        
+        <label for="name">Name:</label>
+        <input type="text" id="name">
+
+        <label for="email">Email:</label>
+        <input type="email" id="email">
+
+        <label for="phone">Phone Number:</label>
+        <input type="text" id="phone">
+
+        <button onclick="updateProfile()">Update Profile</button>
+    </div>
+
+    <div class="nav">
+        <button onclick="location.href='/'">Home</button>
+        <button onclick="location.href='/contacts'">Contacts</button>
+        <button onclick="location.href='/alerts'">Alerts</button>
+        <button onclick="location.href='/profile'">Profile</button>
+    </div>
+
+    <script>
+        function fetchProfile() {
+            fetch("/get_profile")
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("name").value = data.name;
+                    document.getElementById("email").value = data.email;
+                    document.getElementById("phone").value = data.phone;
+                    if (data.profile_pic) {
+                        document.getElementById("profilePic").src = data.profile_pic;
+                    }
+                })
+                .catch(error => console.error("Error fetching profile:", error));
+        }
+
+        function updateProfile() {
+            const name = document.getElementById("name").value.trim();
+            const email = document.getElementById("email").value.trim();
+            const phone = document.getElementById("phone").value.trim();
+
+            if (!name || !phone) {
+                alert("Name and phone number cannot be empty!");
+                return;
+            }
+
+            fetch("/update_profile", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, email, phone })
+            })
+            .then(response => response.json())
+            .then(data => alert(data.message))
+            .catch(error => console.error("Error updating profile:", error));
+        }
+
+        function uploadProfilePic() {
+            const fileInput = document.getElementById("profilePicInput");
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append("profile_pic", file);
+            
+            fetch("/upload_profile_pic", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById("profilePic").src = data.profile_pic;
+                } else {
+                    alert("Error uploading profile picture");
+                }
+            })
+            .catch(error => console.error("Error uploading profile picture:", error));
+        }
+
+        fetchProfile();
+    </script>
+</body>
+</html>

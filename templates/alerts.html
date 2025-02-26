@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOS Alerts</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .header {
+            background-color: #6a0dad;
+            color: white;
+            text-align: center;
+            padding: 15px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+        #map {
+            width: 90%;
+            height: 400px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .alert-list {
+            width: 90%;
+            margin-top: 20px;
+            padding: 10px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .alert-item {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            font-size: 14px;
+        }
+        .alert-item:last-child {
+            border-bottom: none;
+        }
+        .nav {
+            display: flex;
+            justify-content: space-around;
+            background: #6a0dad;
+            padding: 10px;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+        }
+        .nav button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">SOS Alerts</div>
+    <div class="container">
+        <div id="map"></div>
+        <div class="alert-list" id="alertList">
+            <h3>Recent Alerts</h3>
+        </div>
+    </div>
+    <div class="nav">
+        <button onclick="location.href='/'">Home</button>
+        <button onclick="location.href='/contacts'">Contacts</button>
+        <button onclick="location.href='/alerts'">Alerts</button>
+        <button onclick="location.href='/profile'">Profile</button>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        let map = L.map('map').setView([20, 0], 2);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let markersGroup = L.layerGroup().addTo(map);
+
+        function fetchAlerts() {
+            fetch("/get_alerts")
+                .then(response => response.json())
+                .then(data => {
+                    const alertList = document.getElementById("alertList");
+                    alertList.innerHTML = "<h3>Recent Alerts</h3>";
+
+                    markersGroup.clearLayers();
+                    
+                    let bounds = new L.LatLngBounds();
+                    
+                    data.alerts.forEach(alert => {
+                        let item = document.createElement("div");
+                        item.classList.add("alert-item");
+                        item.innerText = `📍 ${alert.latitude}, ${alert.longitude} - ${alert.time}`;
+                        alertList.appendChild(item);
+
+                        let marker = L.marker([alert.latitude, alert.longitude]).addTo(markersGroup);
+                        marker.bindPopup(`🚨 Alert at ${alert.time}`).openPopup();
+                        
+                        bounds.extend([alert.latitude, alert.longitude]);
+                    });
+
+                    if (data.alerts.length > 0) {
+                        map.fitBounds(bounds, { padding: [50, 50] });
+                    }
+                })
+                .catch(error => console.error("Error fetching alerts:", error));
+        }
+
+        fetchAlerts();
+        setInterval(fetchAlerts, 30000);
+    </script>
+</body>
+</html>
